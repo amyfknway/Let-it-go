@@ -1,0 +1,1037 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<title>Let It Go</title>
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Let It Go">
+<meta name="theme-color" content="#0f0f1e">
+<style>
+  :root {
+    --bg-top: #1a1a2e;
+    --bg-bottom: #0f0f1e;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; user-select: none; -webkit-user-select: none; }
+  html, body {
+    margin: 0; padding: 0; height: 100%; overflow: hidden;
+    background: radial-gradient(circle at 50% 20%, var(--bg-top), var(--bg-bottom));
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif;
+    color: #fff;
+    touch-action: none;
+  }
+  #app {
+    position: relative;
+    width: 100%;
+    height: 100vh;
+    height: -webkit-fill-available;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: env(safe-area-inset-top) 20px env(safe-area-inset-bottom);
+  }
+
+  /* Counter top-left, subtle */
+  #counter {
+    position: absolute;
+    top: calc(env(safe-area-inset-top, 0px) + 18px);
+    left: 20px;
+    font-size: 13px;
+    letter-spacing: 0.3px;
+    color: rgba(255,255,255,0.35);
+    font-weight: 500;
+  }
+  #counter b { color: rgba(255,255,255,0.6); font-weight: 600; }
+
+  #hint {
+    position: absolute;
+    top: calc(env(safe-area-inset-top, 0px) + 18px);
+    right: 20px;
+    font-size: 12px;
+    color: rgba(255,255,255,0.25);
+  }
+
+  .stage {
+    position: relative;
+    width: 100%;
+    max-width: 340px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+  }
+
+  #bubbleWrap {
+    position: relative;
+    width: 260px;
+    height: 260px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  #bubble {
+    position: relative;
+    width: 220px;
+    height: 220px;
+    border-radius: 50%;
+    background: radial-gradient(circle at 32% 28%, rgba(255,255,255,0.35), rgba(140,170,255,0.12) 45%, rgba(90,110,200,0.08) 75%);
+    border: 1px solid rgba(255,255,255,0.25);
+    box-shadow:
+      0 0 30px rgba(120,150,255,0.15),
+      inset 0 0 40px rgba(255,255,255,0.08);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: transform 0.08s ease-out, box-shadow 0.08s ease-out, border-color 0.08s ease-out;
+    animation: float 4s ease-in-out infinite;
+  }
+
+  @keyframes float {
+    0%, 100% { transform: translateY(0px); }
+    50% { transform: translateY(-8px); }
+  }
+
+  #bubble.charging {
+    animation: none;
+  }
+
+  #bubble.poof {
+    animation: none;
+    transition: transform 0.1s ease-out, opacity 0.1s ease-out;
+  }
+
+  #thought {
+    width: 170px;
+    max-height: 170px;
+    overflow-y: auto;
+    background: transparent;
+    border: none;
+    outline: none;
+    color: rgba(255,255,255,0.92);
+    font-size: 16px;
+    line-height: 1.4;
+    text-align: center;
+    caret-color: rgba(255,255,255,0.8);
+    font-family: inherit;
+    padding: 0;
+    margin: 0;
+  }
+  #thought:empty::before {
+    content: attr(data-placeholder);
+    color: rgba(255,255,255,0.32);
+  }
+  #thought::-webkit-scrollbar { display: none; }
+
+  #instructions {
+    margin-top: 30px;
+    text-align: center;
+    font-size: 14px;
+    color: rgba(255,255,255,0.4);
+    line-height: 1.6;
+    min-height: 42px;
+  }
+
+  #chargeRing {
+    position: absolute;
+    top: 0; left: 0;
+    width: 260px;
+    height: 260px;
+    transform: rotate(-90deg);
+    pointer-events: none;
+  }
+  #chargeRing circle {
+    fill: none;
+    stroke-width: 3;
+  }
+  #chargeRing .track {
+    stroke: rgba(255,255,255,0.06);
+  }
+  #chargeRing .progress {
+    stroke: rgba(180,200,255,0.7);
+    stroke-linecap: round;
+    stroke-dasharray: 691;
+    stroke-dashoffset: 691;
+    transition: stroke-dashoffset 0.05s linear;
+  }
+
+  .particle {
+    position: fixed;
+    top: 0; left: 0;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: rgba(200,215,255,0.9);
+    pointer-events: none;
+    will-change: transform, opacity;
+  }
+
+  #flash {
+    position: fixed;
+    inset: 0;
+    background: radial-gradient(circle at 50% 50%, rgba(255,255,255,0.5), rgba(255,255,255,0) 60%);
+    opacity: 0;
+    pointer-events: none;
+  }
+  #flash.on {
+    animation: flashOut 0.35s ease-out forwards;
+  }
+  @keyframes flashOut {
+    0% { opacity: 0.9; }
+    100% { opacity: 0; }
+  }
+
+  #released {
+    position: absolute;
+    bottom: calc(env(safe-area-inset-bottom, 0px) + 26px);
+    font-size: 12px;
+    color: rgba(255,255,255,0.28);
+    opacity: 0;
+    transition: opacity 0.6s ease;
+  }
+  #released.show { opacity: 1; }
+
+  /* Tag panel - appears before release confirms */
+  #tagPanel {
+    position: fixed;
+    inset: 0;
+    background: rgba(10,10,20,0.92);
+    display: none;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+    z-index: 50;
+  }
+  #tagPanel.show { display: flex; }
+  #tagPanel h2 {
+    font-size: 16px;
+    font-weight: 600;
+    color: rgba(255,255,255,0.85);
+    margin: 0 0 22px 0;
+    text-align: center;
+  }
+  .tagGroup {
+    width: 100%;
+    max-width: 320px;
+    margin-bottom: 22px;
+  }
+  .tagGroup label {
+    display: block;
+    font-size: 12px;
+    color: rgba(255,255,255,0.4);
+    margin-bottom: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+  .catGrid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .catChip {
+    padding: 9px 14px;
+    border-radius: 20px;
+    background: rgba(255,255,255,0.06);
+    border: 1px solid rgba(255,255,255,0.12);
+    color: rgba(255,255,255,0.7);
+    font-size: 13px;
+    cursor: pointer;
+  }
+  .catChip.selected {
+    background: rgba(140,170,255,0.28);
+    border-color: rgba(180,200,255,0.6);
+    color: #fff;
+  }
+  .sevRow {
+    display: flex;
+    gap: 8px;
+    justify-content: space-between;
+  }
+  .sevDot {
+    flex: 1;
+    height: 40px;
+    border-radius: 10px;
+    background: rgba(255,255,255,0.06);
+    border: 1px solid rgba(255,255,255,0.12);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 14px;
+    color: rgba(255,255,255,0.55);
+    cursor: pointer;
+  }
+  .sevDot.selected {
+    background: rgba(255,140,140,0.28);
+    border-color: rgba(255,160,160,0.6);
+    color: #fff;
+  }
+  #tagActions {
+    display: flex;
+    gap: 12px;
+    margin-top: 8px;
+    width: 100%;
+    max-width: 320px;
+  }
+  #tagActions button {
+    flex: 1;
+    padding: 13px;
+    border-radius: 12px;
+    border: none;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  #confirmRelease {
+    background: rgba(140,170,255,0.85);
+    color: #10101c;
+  }
+  #confirmRelease:disabled {
+    background: rgba(255,255,255,0.1);
+    color: rgba(255,255,255,0.3);
+  }
+  #cancelRelease {
+    background: rgba(255,255,255,0.08);
+    color: rgba(255,255,255,0.6);
+  }
+  #skipTag {
+    margin-top: 14px;
+    background: none;
+    border: none;
+    color: rgba(255,255,255,0.3);
+    font-size: 12px;
+    text-decoration: underline;
+  }
+
+  /* Nav button to patterns view */
+  #patternsBtn {
+    position: absolute;
+    bottom: calc(env(safe-area-inset-bottom, 0px) + 22px);
+    right: 20px;
+    font-size: 12px;
+    color: rgba(255,255,255,0.35);
+    background: rgba(255,255,255,0.06);
+    border: 1px solid rgba(255,255,255,0.12);
+    padding: 8px 14px;
+    border-radius: 16px;
+  }
+
+  /* Patterns view */
+  #patternsView {
+    position: fixed;
+    inset: 0;
+    background: linear-gradient(180deg, #1a1a2e, #0f0f1e);
+    display: none;
+    flex-direction: column;
+    padding: calc(env(safe-area-inset-top, 0px) + 18px) 18px calc(env(safe-area-inset-bottom, 0px) + 18px);
+    z-index: 40;
+    overflow: hidden;
+  }
+  #patternsView.show { display: flex; }
+  #patternsHeader {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 16px;
+  }
+  #patternsHeader h1 {
+    font-size: 18px;
+    margin: 0;
+    color: rgba(255,255,255,0.9);
+  }
+  #totalCount {
+    font-size: 13px;
+    color: rgba(255,255,255,0.4);
+    margin-bottom: 16px;
+  }
+  #totalCount b { color: rgba(255,255,255,0.65); font-weight: 600; }
+  #closePatterns {
+    background: rgba(255,255,255,0.08);
+    border: none;
+    color: rgba(255,255,255,0.7);
+    width: 32px; height: 32px;
+    border-radius: 50%;
+    font-size: 16px;
+  }
+  #patternsScroll {
+    flex: 1;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+  #patternsScroll::-webkit-scrollbar { display: none; }
+
+  #chartCard {
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 14px;
+    padding: 16px;
+    margin-bottom: 16px;
+  }
+  #chartCard h3 {
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: rgba(255,255,255,0.4);
+    margin: 0 0 14px 0;
+  }
+  .barRow {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 10px;
+  }
+  .barLabel {
+    width: 128px;
+    font-size: 11.5px;
+    color: rgba(255,255,255,0.6);
+    flex-shrink: 0;
+    line-height: 1.3;
+  }
+  .barTrack {
+    flex: 1;
+    height: 16px;
+    background: rgba(255,255,255,0.05);
+    border-radius: 8px;
+    overflow: hidden;
+  }
+  .barFill {
+    height: 100%;
+    border-radius: 8px;
+    background: linear-gradient(90deg, rgba(140,170,255,0.7), rgba(180,150,255,0.7));
+  }
+  .barCount {
+    width: 22px;
+    text-align: right;
+    font-size: 12px;
+    color: rgba(255,255,255,0.5);
+    flex-shrink: 0;
+  }
+
+  #emptyState {
+    text-align: center;
+    color: rgba(255,255,255,0.3);
+    font-size: 13px;
+    margin-top: 40px;
+    line-height: 1.6;
+  }
+
+  .entryCard {
+    background: rgba(255,255,255,0.03);
+    border: 1px solid rgba(255,255,255,0.07);
+    border-radius: 12px;
+    padding: 13px 14px;
+    margin-bottom: 10px;
+  }
+  .entryTop {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 6px;
+  }
+  .entryMeta {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .entryCat {
+    font-size: 11px;
+    padding: 3px 9px;
+    border-radius: 10px;
+    background: rgba(140,170,255,0.18);
+    color: rgba(200,215,255,0.9);
+  }
+  .entrySev {
+    font-size: 11px;
+    color: rgba(255,160,160,0.85);
+  }
+  .entryDate {
+    font-size: 11px;
+    color: rgba(255,255,255,0.28);
+  }
+  .entryText {
+    font-size: 13.5px;
+    color: rgba(255,255,255,0.75);
+    line-height: 1.5;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+  .entryDelete {
+    background: none;
+    border: none;
+    color: rgba(255,255,255,0.25);
+    font-size: 11px;
+    margin-top: 8px;
+    padding: 0;
+  }
+</style>
+</head>
+<body>
+<div id="app">
+  <input type="checkbox" id="hapticToggle" style="position:absolute; opacity:0; pointer-events:none; width:1px; height:1px;">
+  <span id="countNum" style="display:none;">0</span>
+  <div id="hint">hold to pop · drag to throw away</div>
+
+  <div class="stage">
+    <div id="bubbleWrap">
+      <svg id="chargeRing" viewBox="0 0 260 260">
+        <circle class="track" cx="130" cy="130" r="110"></circle>
+        <circle class="progress" cx="130" cy="130" r="110"></circle>
+      </svg>
+      <div id="bubble">
+        <div id="thought" contenteditable="true" data-placeholder="what's on your mind..."></div>
+      </div>
+    </div>
+    <div id="instructions">Type your thought.<br>Then press and hold the bubble to let it go.</div>
+  </div>
+
+  <div id="released">a thought is gone</div>
+  <button id="patternsBtn">Patterns</button>
+</div>
+<div id="flash"></div>
+
+<!-- Tag panel shown before a release is confirmed -->
+<div id="tagPanel">
+  <h2>Before you let it go...</h2>
+  <div class="tagGroup">
+    <label>Category</label>
+    <div class="catGrid" id="catGrid"></div>
+  </div>
+  <div class="tagGroup">
+    <label>Severity</label>
+    <div class="sevRow" id="sevRow"></div>
+  </div>
+  <div id="tagActions">
+    <button id="cancelRelease">Back</button>
+    <button id="confirmRelease" disabled>Release</button>
+  </div>
+  <button id="skipTag">skip tagging, just release it</button>
+</div>
+
+<!-- Patterns / data view -->
+<div id="patternsView">
+  <div id="patternsHeader">
+    <h1>Patterns</h1>
+    <button id="closePatterns">✕</button>
+  </div>
+  <div id="totalCount">Total released: <b id="totalCountNum">0</b></div>
+  <div id="patternsScroll">
+    <div id="chartCard">
+      <h3>By category</h3>
+      <div id="barChart"></div>
+    </div>
+    <div id="entryList"></div>
+    <div id="emptyState">Nothing tagged yet.<br>Releases you tag will show up here.</div>
+  </div>
+</div>
+
+<script>
+(function(){
+  const bubble = document.getElementById('bubble');
+  const textarea = document.getElementById('thought');
+  const chargeRing = document.querySelector('#chargeRing .progress');
+  const instructions = document.getElementById('instructions');
+  const countNum = document.getElementById('countNum');
+  const flash = document.getElementById('flash');
+  const releasedLabel = document.getElementById('released');
+  const CIRC = 691;
+
+  const STORAGE_KEY = 'thoughtPopCount';
+  let count = parseInt(localStorage.getItem(STORAGE_KEY) || '0', 10);
+  countNum.textContent = count;
+
+  // --- Pattern tracking ---
+  const ENTRIES_KEY = 'thoughtPopEntries';
+  const CATEGORIES = ['Harm OCD', 'Suicidal/self-harm intrusions', 'Sexual intrusions', 'POCD (pedophilia-themed)', 'Contamination/Health', 'Clinical/work', 'Other'];
+  function loadEntries() {
+    try { return JSON.parse(localStorage.getItem(ENTRIES_KEY) || '[]'); }
+    catch (e) { return []; }
+  }
+  function saveEntries(entries) {
+    localStorage.setItem(ENTRIES_KEY, JSON.stringify(entries));
+  }
+  let pendingAction = null; // 'pop' or 'throw', set before tag panel opens
+  let pendingThrowVec = null;
+  let selectedCategory = null;
+  let selectedSeverity = null;
+
+  const tagPanel = document.getElementById('tagPanel');
+  const catGrid = document.getElementById('catGrid');
+  const sevRow = document.getElementById('sevRow');
+  const confirmReleaseBtn = document.getElementById('confirmRelease');
+  const cancelReleaseBtn = document.getElementById('cancelRelease');
+  const skipTagBtn = document.getElementById('skipTag');
+  const patternsBtn = document.getElementById('patternsBtn');
+  const patternsView = document.getElementById('patternsView');
+  const closePatternsBtn = document.getElementById('closePatterns');
+
+  CATEGORIES.forEach(cat => {
+    const chip = document.createElement('div');
+    chip.className = 'catChip';
+    chip.textContent = cat;
+    chip.addEventListener('click', () => {
+      document.querySelectorAll('.catChip').forEach(c => c.classList.remove('selected'));
+      chip.classList.add('selected');
+      selectedCategory = cat;
+      updateConfirmState();
+    });
+    catGrid.appendChild(chip);
+  });
+
+  for (let i = 1; i <= 5; i++) {
+    const dot = document.createElement('div');
+    dot.className = 'sevDot';
+    dot.textContent = i;
+    dot.addEventListener('click', () => {
+      document.querySelectorAll('.sevDot').forEach(d => d.classList.remove('selected'));
+      dot.classList.add('selected');
+      selectedSeverity = i;
+      updateConfirmState();
+    });
+    sevRow.appendChild(dot);
+  }
+
+  function updateConfirmState() {
+    confirmReleaseBtn.disabled = !(selectedCategory && selectedSeverity);
+  }
+
+  function openTagPanel(action, throwVec) {
+    pendingAction = action;
+    pendingThrowVec = throwVec || null;
+    selectedCategory = null;
+    selectedSeverity = null;
+    document.querySelectorAll('.catChip').forEach(c => c.classList.remove('selected'));
+    document.querySelectorAll('.sevDot').forEach(d => d.classList.remove('selected'));
+    updateConfirmState();
+    // pause the bubble mid-gesture so it doesn't look broken behind the panel
+    bubble.style.transition = 'none';
+    tagPanel.classList.add('show');
+  }
+
+  function closeTagPanelAndCancel() {
+    tagPanel.classList.remove('show');
+    // snap bubble back visually since the release was cancelled
+    bubble.style.transition = 'transform 0.3s cubic-bezier(.3,.7,.4,1)';
+    bubble.style.transform = '';
+    bubble.style.opacity = '';
+    bubble.style.boxShadow = '';
+    bubble.style.borderColor = '';
+    resetRing();
+    popped = false;
+    dragging = false;
+    dragMode = false;
+    instructions.textContent = "Type your thought.\nThen press and hold the bubble to let it go.";
+  }
+
+  function recordEntry(category, severity) {
+    const text = textarea.textContent.trim();
+    const entries = loadEntries();
+    entries.push({
+      id: Date.now(),
+      text: text,
+      category: category || 'Untagged',
+      severity: severity || null,
+      date: new Date().toISOString()
+    });
+    saveEntries(entries);
+  }
+
+  confirmReleaseBtn.addEventListener('click', () => {
+    if (!selectedCategory || !selectedSeverity) return;
+    recordEntry(selectedCategory, selectedSeverity);
+    tagPanel.classList.remove('show');
+    finishRelease();
+  });
+
+  cancelReleaseBtn.addEventListener('click', closeTagPanelAndCancel);
+
+  skipTagBtn.addEventListener('click', () => {
+    recordEntry(null, null);
+    tagPanel.classList.remove('show');
+    finishRelease();
+  });
+
+  function finishRelease() {
+    if (pendingAction === 'pop') {
+      doPopVisual();
+    } else if (pendingAction === 'throw') {
+      doThrowVisual(pendingThrowVec.dx, pendingThrowVec.dy);
+    }
+  }
+
+  patternsBtn.addEventListener('click', renderPatterns);
+  closePatternsBtn.addEventListener('click', () => patternsView.classList.remove('show'));
+
+  function renderPatterns() {
+    const entries = loadEntries().slice().reverse();
+    const barChart = document.getElementById('barChart');
+    const entryList = document.getElementById('entryList');
+    const emptyState = document.getElementById('emptyState');
+    barChart.innerHTML = '';
+    entryList.innerHTML = '';
+    document.getElementById('totalCountNum').textContent = count;
+
+    if (entries.length === 0) {
+      emptyState.style.display = 'block';
+      document.getElementById('chartCard').style.display = 'none';
+    } else {
+      emptyState.style.display = 'none';
+      document.getElementById('chartCard').style.display = 'block';
+
+      // frequency by category
+      const counts = {};
+      entries.forEach(e => {
+        const c = e.category || 'Untagged';
+        counts[c] = (counts[c] || 0) + 1;
+      });
+      const maxCount = Math.max(...Object.values(counts));
+      Object.entries(counts)
+        .sort((a, b) => b[1] - a[1])
+        .forEach(([cat, n]) => {
+          const row = document.createElement('div');
+          row.className = 'barRow';
+          row.innerHTML = `
+            <div class="barLabel">${cat}</div>
+            <div class="barTrack"><div class="barFill" style="width:${(n / maxCount) * 100}%"></div></div>
+            <div class="barCount">${n}</div>
+          `;
+          barChart.appendChild(row);
+        });
+
+      // entry list
+      entries.forEach(e => {
+        const card = document.createElement('div');
+        card.className = 'entryCard';
+        const d = new Date(e.date);
+        const dateStr = d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) + ' · ' + d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+        const sevStr = e.severity ? '●'.repeat(e.severity) + '○'.repeat(5 - e.severity) : '';
+        card.innerHTML = `
+          <div class="entryTop">
+            <div class="entryMeta">
+              <span class="entryCat">${e.category}</span>
+              ${e.severity ? `<span class="entrySev">${sevStr}</span>` : ''}
+            </div>
+            <span class="entryDate">${dateStr}</span>
+          </div>
+          <div class="entryText">${e.text ? escapeHtml(e.text) : '<em style="opacity:0.4">no text saved</em>'}</div>
+          <button class="entryDelete" data-id="${e.id}">delete</button>
+        `;
+        entryList.appendChild(card);
+      });
+
+      entryList.querySelectorAll('.entryDelete').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const id = Number(btn.getAttribute('data-id'));
+          const remaining = loadEntries().filter(en => en.id !== id);
+          saveEntries(remaining);
+          renderPatterns();
+        });
+      });
+    }
+
+    patternsView.classList.add('show');
+  }
+
+  function escapeHtml(str) {
+    const div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
+  }
+
+  let holdTimer = null;
+  let holdStart = 0;
+  let charging = false;
+  let popped = false;
+  const HOLD_DURATION = 450; // ms to fully charge
+
+  // Drag-to-throw state
+  let dragging = false;
+  let dragMode = false; // becomes true once movement exceeds threshold
+  let startX = 0, startY = 0;
+  let curX = 0, curY = 0;
+  const DRAG_THRESHOLD = 18; // px before we treat it as a throw, not a hold
+  const THROW_DISTANCE = 90; // px of movement needed to release as a throw
+
+  const hapticToggle = document.getElementById('hapticToggle');
+  let hapticState = false;
+
+  function vibrate(pattern) {
+    // Standard Vibration API (works on Android Chrome/Firefox, NOT iOS Safari)
+    if (navigator.vibrate) {
+      try { navigator.vibrate(pattern); } catch (e) {}
+    }
+    // iOS 18+ Safari haptic workaround: native checkbox toggles produce a real
+    // system haptic tap even though the Vibration API itself isn't exposed.
+    hapticState = !hapticState;
+    hapticToggle.checked = hapticState;
+    hapticToggle.dispatchEvent(new Event('change', { bubbles: true }));
+  }
+
+  function vibrateBurst(times, gap) {
+    // Fire several checkbox taps in a row to approximate a stronger/longer buzz on iOS
+    let i = 0;
+    const fire = () => {
+      hapticState = !hapticState;
+      hapticToggle.checked = hapticState;
+      hapticToggle.dispatchEvent(new Event('change', { bubbles: true }));
+      i++;
+      if (i < times) setTimeout(fire, gap);
+    };
+    fire();
+  }
+
+  function resetRing() {
+    chargeRing.style.transition = 'none';
+    chargeRing.style.strokeDashoffset = CIRC;
+    // force reflow
+    void chargeRing.offsetWidth;
+    chargeRing.style.transition = '';
+  }
+
+  function updateRing(progress) {
+    const offset = CIRC - (CIRC * progress);
+    chargeRing.style.strokeDashoffset = offset;
+  }
+
+  function startCharge(e) {
+    if (popped) return;
+    textarea.blur();
+    charging = true;
+    holdStart = performance.now();
+    bubble.classList.add('charging');
+    instructions.textContent = "Keep holding...";
+    vibrate(10);
+
+    function tick(now) {
+      if (!charging) return;
+      const elapsed = now - holdStart;
+      const progress = Math.min(elapsed / HOLD_DURATION, 1);
+      updateRing(progress);
+
+      const scale = 1 + progress * 0.12;
+      bubble.style.transform = `scale(${scale})`;
+      bubble.style.boxShadow = `0 0 ${30 + progress * 60}px rgba(120,150,255,${0.15 + progress * 0.35}), inset 0 0 40px rgba(255,255,255,0.08)`;
+      bubble.style.borderColor = `rgba(255,255,255,${0.25 + progress * 0.4})`;
+
+      if (progress >= 1) {
+        pop();
+        return;
+      }
+      holdTimer = requestAnimationFrame(tick);
+    }
+    holdTimer = requestAnimationFrame(tick);
+  }
+
+  function cancelCharge() {
+    if (!charging) return;
+    charging = false;
+    cancelAnimationFrame(holdTimer);
+    bubble.classList.remove('charging');
+    bubble.style.transform = '';
+    bubble.style.boxShadow = '';
+    bubble.style.borderColor = '';
+    resetRing();
+    instructions.textContent = "Type your thought.\nThen press and hold the bubble to let it go.";
+  }
+
+  function spawnParticles(x, y) {
+    const n = 26;
+    for (let i = 0; i < n; i++) {
+      const p = document.createElement('div');
+      p.className = 'particle';
+      const angle = (Math.PI * 2 * i) / n + Math.random() * 0.3;
+      const dist = 60 + Math.random() * 90;
+      const dx = Math.cos(angle) * dist;
+      const dy = Math.sin(angle) * dist;
+      const size = 3 + Math.random() * 6;
+      p.style.width = size + 'px';
+      p.style.height = size + 'px';
+      p.style.left = x + 'px';
+      p.style.top = y + 'px';
+      p.style.background = Math.random() > 0.5
+        ? 'rgba(200,215,255,0.9)'
+        : 'rgba(255,255,255,0.8)';
+      document.body.appendChild(p);
+
+      const anim = p.animate([
+        { transform: 'translate(-50%,-50%) translate(0,0) scale(1)', opacity: 1 },
+        { transform: `translate(-50%,-50%) translate(${dx}px, ${dy}px) scale(0)`, opacity: 0 }
+      ], {
+        duration: 700 + Math.random() * 400,
+        easing: 'cubic-bezier(.2,.8,.2,1)'
+      });
+      anim.onfinish = () => p.remove();
+    }
+  }
+
+  function pop() {
+    if (popped) return;
+    popped = true;
+    charging = false;
+    cancelAnimationFrame(holdTimer);
+    openTagPanel('pop');
+  }
+
+  function doPopVisual() {
+    const rect = bubble.getBoundingClientRect();
+    const cx = rect.left + rect.width / 2;
+    const cy = rect.top + rect.height / 2;
+
+    // strong vibration pulse
+    vibrate([0, 60, 20, 80, 20, 100]);
+    vibrateBurst(4, 70);
+
+    bubble.classList.add('poof');
+    bubble.style.transform = 'scale(1.3)';
+    bubble.style.opacity = '0';
+
+    flash.classList.add('on');
+    setTimeout(() => flash.classList.remove('on'), 400);
+
+    spawnParticles(cx, cy);
+
+    instructions.textContent = "Gone.";
+    releasedLabel.classList.add('show');
+
+    count += 1;
+    localStorage.setItem(STORAGE_KEY, String(count));
+    countNum.textContent = count;
+
+    setTimeout(resetApp, 1100);
+  }
+
+  function throwAway(dx, dy) {
+    if (popped) return;
+    popped = true;
+    charging = false;
+    dragging = false;
+    dragMode = false;
+    cancelAnimationFrame(holdTimer);
+    openTagPanel('throw', { dx, dy });
+  }
+
+  function doThrowVisual(dx, dy) {
+    // light single tap, distinct from the pop's stronger burst
+    vibrate(25);
+    vibrateBurst(1, 0);
+
+    // fling the bubble off in the direction it was dragged
+    const angle = Math.atan2(dy, dx);
+    const flingX = Math.cos(angle) * 500;
+    const flingY = Math.sin(angle) * 500;
+
+    bubble.style.transition = 'transform 0.45s cubic-bezier(.3,.6,.4,1), opacity 0.45s ease-out';
+    bubble.style.transform = `translate(${flingX}px, ${flingY}px) scale(0.4) rotate(${angle * 40}deg)`;
+    bubble.style.opacity = '0';
+
+    instructions.textContent = "Thrown away.";
+    releasedLabel.classList.add('show');
+
+    count += 1;
+    localStorage.setItem(STORAGE_KEY, String(count));
+    countNum.textContent = count;
+
+    setTimeout(resetApp, 550);
+  }
+
+  function resetApp() {
+    textarea.textContent = '';
+    bubble.classList.remove('poof', 'charging');
+    bubble.style.transition = '';
+    bubble.style.transform = '';
+    bubble.style.opacity = '';
+    bubble.style.boxShadow = '';
+    bubble.style.borderColor = '';
+    resetRing();
+    instructions.textContent = "Type your thought.\nThen press and hold the bubble to let it go.";
+    releasedLabel.classList.remove('show');
+    popped = false;
+    dragging = false;
+    dragMode = false;
+  }
+
+  // Pointer events (works for touch + mouse)
+  bubble.addEventListener('pointerdown', (e) => {
+    if (document.activeElement === textarea) return;
+    dragging = true;
+    dragMode = false;
+    startX = e.clientX;
+    startY = e.clientY;
+    curX = startX;
+    curY = startY;
+    startCharge(e);
+  });
+
+  bubble.addEventListener('pointermove', (e) => {
+    if (!dragging || popped) return;
+    curX = e.clientX;
+    curY = e.clientY;
+    const dx = curX - startX;
+    const dy = curY - startY;
+    const dist = Math.hypot(dx, dy);
+
+    if (!dragMode && dist > DRAG_THRESHOLD) {
+      // switch out of charge mode into drag-to-throw mode
+      dragMode = true;
+      charging = false;
+      cancelAnimationFrame(holdTimer);
+      bubble.classList.remove('charging');
+      bubble.style.boxShadow = '';
+      bubble.style.borderColor = '';
+      resetRing();
+      instructions.textContent = "Keep dragging to throw it away...";
+    }
+
+    if (dragMode) {
+      const clamped = Math.min(dist, THROW_DISTANCE * 1.4);
+      const ratio = clamped / dist || 0;
+      bubble.style.transition = 'none';
+      bubble.style.transform = `translate(${dx * ratio}px, ${dy * ratio}px) scale(${1 - Math.min(dist / (THROW_DISTANCE * 4), 0.15)})`;
+
+      if (dist >= THROW_DISTANCE) {
+        throwAway(dx, dy);
+      }
+    }
+  });
+
+  bubble.addEventListener('pointerup', () => {
+    if (dragMode && !popped) {
+      // released before reaching throw distance — snap back
+      dragging = false;
+      dragMode = false;
+      bubble.style.transition = 'transform 0.3s cubic-bezier(.3,.7,.4,1)';
+      bubble.style.transform = '';
+      instructions.textContent = "Type your thought.\nThen press and hold the bubble to let it go.";
+      return;
+    }
+    dragging = false;
+    cancelCharge();
+  });
+  bubble.addEventListener('pointerleave', () => {
+    if (!dragMode) cancelCharge();
+  });
+  bubble.addEventListener('pointercancel', () => {
+    dragging = false;
+    dragMode = false;
+    cancelCharge();
+  });
+
+  textarea.addEventListener('focus', () => {
+    instructions.textContent = "Write it out, then tap outside and hold to release.";
+  });
+  textarea.addEventListener('blur', () => {
+    if (!charging && !popped) {
+      instructions.textContent = "Type your thought.\nThen press and hold the bubble to let it go.";
+    }
+  });
+
+  // prevent iOS rubber-band scroll
+  document.body.addEventListener('touchmove', (e) => e.preventDefault(), { passive: false });
+})();
+</script>
+</body>
+</html>
