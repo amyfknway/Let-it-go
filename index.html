@@ -70,6 +70,7 @@ display: flex;
 flex-direction: column;
 align-items: center;
 justify-content: center;
+z-index: 10;
 }
 
 #bubbleWrap {
@@ -109,7 +110,7 @@ animation: none;
 
 #bubble.poof {
 animation: none;
-transition: transform 0.1s ease-out, opacity 0.1s ease-out;
+transition: transform 0.06s cubic-bezier(.2,.9,.3,1), opacity 0.08s ease-out;
 }
 
 #thought {
@@ -479,7 +480,8 @@ padding: 0;
 </head>
 <body>
 <div id="app">
-  <input type="checkbox" id="hapticToggle" style="position:absolute; opacity:0; pointer-events:none; width:1px; height:1px;">
+  <input type="checkbox" switch id="hapticToggle" style="position:absolute; opacity:0; pointer-events:none; width:1px; height:1px;">
+  <label for="hapticToggle" id="hapticLabel" style="position:absolute; opacity:0; pointer-events:none; width:1px; height:1px;"></label>
   <span id="countNum" style="display:none;">0</span>
   <div id="hint">hold to pop · drag to throw away</div>
 
@@ -549,13 +551,9 @@ padding: 0;
   const releasedLabel = document.getElementById('released');
   const CIRC = 691;
 
-  const STORAGE_KEY = 'thoughtPopCount';
-  let count = parseInt(localStorage.getItem(STORAGE_KEY) || '0', 10);
-  countNum.textContent = count;
-
   // --- Pattern tracking ---
   const ENTRIES_KEY = 'thoughtPopEntries';
-  const CATEGORIES = ['Harm OCD', 'Suicidal/self-harm intrusions', 'Sexual intrusions', 'POCD (pedophilia-themed)', 'Contamination/Health', 'Clinical/work', 'Other'];
+  const CATEGORIES = ['Harm OCD', 'Suicidal/self-harm intrusions', 'Sexual intrusions', 'POCD (pedophilia-themed)', 'Intrusive memory loops', 'Contamination/Health', 'Clinical/work', 'Other'];
   function loadEntries() {
     try { return JSON.parse(localStorage.getItem(ENTRIES_KEY) || '[]'); }
     catch (e) { return []; }
@@ -563,6 +561,29 @@ padding: 0;
   function saveEntries(entries) {
     localStorage.setItem(ENTRIES_KEY, JSON.stringify(entries));
   }
+
+  const STORAGE_KEY = 'thoughtPopCount'; // legacy key, kept only for migration below
+  let count = loadEntries().length;
+  countNum.textContent = count;
+
+  // one-time migration: fold any old standalone tally into entries-based count
+  (function migrateLegacyCount() {
+    const legacy = parseInt(localStorage.getItem(STORAGE_KEY) || '0', 10);
+    if (legacy > count) {
+      // older releases happened before per-entry logging existed; represent
+      // the difference as untagged, textless entries so the total stays accurate
+      const entries = loadEntries();
+      const gap = legacy - count;
+      for (let i = 0; i < gap; i++) {
+        entries.push({ id: Date.now() + i, text: '', category: 'Untagged', severity: null, date: new Date(0).toISOString() });
+      }
+      saveEntries(entries);
+      count = entries.length;
+      countNum.textContent = count;
+    }
+    localStorage.removeItem(STORAGE_KEY);
+  })();
+
   let pendingAction = null; // 'pop' or 'throw', set before tag panel opens
   let pendingThrowVec = null;
   let selectedCategory = null;
@@ -737,6 +758,8 @@ padding: 0;
           const id = Number(btn.getAttribute('data-id'));
           const remaining = loadEntries().filter(en => en.id !== id);
           saveEntries(remaining);
+          count = remaining.length;
+          countNum.textContent = count;
           renderPatterns();
         });
       });
@@ -755,42 +778,119 @@ padding: 0;
   let holdStart = 0;
   let charging = false;
   let popped = false;
-  const HOLD_DURATION = 450; // ms to fully charge
+  const HOLD_DURATION = 280; // ms to fully charge
 
   // Drag-to-throw state
   let dragging = false;
   let dragMode = false; // becomes true once movement exceeds threshold
   let startX = 0, startY = 0;
   let curX = 0, curY = 0;
-  const DRAG_THRESHOLD = 18; // px before we treat it as a throw, not a hold
-  const THROW_DISTANCE = 90; // px of movement needed to release as a throw
+  const DRAG_THRESHOLD = 18; // px before we treat it as a drag, not a hold
 
   const hapticToggle = document.getElementById('hapticToggle');
-  let hapticState = false;
+  const hapticLabel = document.getElementById('hapticLabel');
+
+  function fireHaptic() {
+    // iOS 17.4–26.4 Safari: an <input type="checkbox" switch> produced a real
+    // system haptic tick when toggled via its <label>. Apple patched this in
+    // iOS 26.5, so on newer versions this call is now a harmless no-op —
+    // the sound + visual pulses below are the fallback sensory cue instead.
+    hapticLabel.click();
+  }
 
   function vibrate(pattern) {
-    // Standard Vibration API (works on Android Chrome/Firefox, NOT iOS Safari)
     if (navigator.vibrate) {
       try { navigator.vibrate(pattern); } catch (e) {}
     }
-    // iOS 18+ Safari haptic workaround: native checkbox toggles produce a real
-    // system haptic tap even though the Vibration API itself isn't exposed.
-    hapticState = !hapticState;
-    hapticToggle.checked = hapticState;
-    hapticToggle.dispatchEvent(new Event('change', { bubbles: true }));
+    fireHaptic();
   }
 
   function vibrateBurst(times, gap) {
-    // Fire several checkbox taps in a row to approximate a stronger/longer buzz on iOS
     let i = 0;
     const fire = () => {
-      hapticState = !hapticState;
-      hapticToggle.checked = hapticState;
-      hapticToggle.dispatchEvent(new Event('change', { bubbles: true }));
+      fireHaptic();
       i++;
       if (i < times) setTimeout(fire, gap);
     };
     fire();
+  }
+
+  // --- Audio pulse: synthesized in-browser, no external files needed ---
+  let audioCtx = null;
+  function getAudioCtx() {
+    if (!audioCtx) {
+      try { audioCtx = new (window.AudioContext || window.webkitAudioContext)(); }
+      catch (e) { return null; }
+    }
+    if (audioCtx.state === 'suspended') audioCtx.resume();
+    return audioCtx;
+  }
+
+  function playPopSound() {
+    const ctx = getAudioCtx();
+    if (!ctx) return;
+    const now = ctx.currentTime;
+
+    // punchy "pop" - sharp transient click + low thump with a fast pitch drop
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(280, now);
+    osc.frequency.exponentialRampToValueAtTime(55, now + 0.09);
+    gain.gain.setValueAtTime(0.0001, now);
+    gain.gain.exponentialRampToValueAtTime(0.55, now + 0.006);
+    gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.16);
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start(now);
+    osc.stop(now + 0.18);
+
+    // extra high-frequency "crack" layered on top for impact
+    const click = ctx.createOscillator();
+    const clickGain = ctx.createGain();
+    click.type = 'square';
+    click.frequency.setValueAtTime(900, now);
+    click.frequency.exponentialRampToValueAtTime(200, now + 0.02);
+    clickGain.gain.setValueAtTime(0.0001, now);
+    clickGain.gain.exponentialRampToValueAtTime(0.18, now + 0.003);
+    clickGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.035);
+    click.connect(clickGain);
+    clickGain.connect(ctx.destination);
+    click.start(now);
+    click.stop(now + 0.04);
+  }
+
+  function playThrowSound() {
+    const ctx = getAudioCtx();
+    if (!ctx) return;
+    const now = ctx.currentTime;
+
+    // light airy "tap" - shorter, higher, quieter than the pop
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(340, now);
+    osc.frequency.exponentialRampToValueAtTime(180, now + 0.08);
+    gain.gain.setValueAtTime(0.0001, now);
+    gain.gain.exponentialRampToValueAtTime(0.22, now + 0.008);
+    gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.12);
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start(now);
+    osc.stop(now + 0.14);
+  }
+
+  // --- Screen shake: physical-feeling substitute for touch feedback ---
+  function screenShake(strength) {
+    const app = document.getElementById('app');
+    const amt = strength || 6;
+    app.animate([
+      { transform: 'translate(0,0)' },
+      { transform: `translate(${amt}px, -${amt * 0.6}px)` },
+      { transform: `translate(-${amt * 0.8}px, ${amt * 0.4}px)` },
+      { transform: `translate(${amt * 0.5}px, 0)` },
+      { transform: 'translate(0,0)' }
+    ], { duration: 220, easing: 'ease-out' });
   }
 
   function resetRing() {
@@ -848,15 +948,15 @@ padding: 0;
   }
 
   function spawnParticles(x, y) {
-    const n = 26;
+    const n = 34;
     for (let i = 0; i < n; i++) {
       const p = document.createElement('div');
       p.className = 'particle';
       const angle = (Math.PI * 2 * i) / n + Math.random() * 0.3;
-      const dist = 60 + Math.random() * 90;
+      const dist = 80 + Math.random() * 120;
       const dx = Math.cos(angle) * dist;
       const dy = Math.sin(angle) * dist;
-      const size = 3 + Math.random() * 6;
+      const size = 3 + Math.random() * 7;
       p.style.width = size + 'px';
       p.style.height = size + 'px';
       p.style.left = x + 'px';
@@ -870,8 +970,8 @@ padding: 0;
         { transform: 'translate(-50%,-50%) translate(0,0) scale(1)', opacity: 1 },
         { transform: `translate(-50%,-50%) translate(${dx}px, ${dy}px) scale(0)`, opacity: 0 }
       ], {
-        duration: 700 + Math.random() * 400,
-        easing: 'cubic-bezier(.2,.8,.2,1)'
+        duration: 450 + Math.random() * 250,
+        easing: 'cubic-bezier(.1,.9,.2,1)'
       });
       anim.onfinish = () => p.remove();
     }
@@ -890,12 +990,14 @@ padding: 0;
     const cx = rect.left + rect.width / 2;
     const cy = rect.top + rect.height / 2;
 
-    // strong vibration pulse
+    // strong vibration pulse (works pre-iOS 26.5) + audio/visual fallback
     vibrate([0, 60, 20, 80, 20, 100]);
     vibrateBurst(4, 70);
+    playPopSound();
+    screenShake(12);
 
     bubble.classList.add('poof');
-    bubble.style.transform = 'scale(1.3)';
+    bubble.style.transform = 'scale(1.6)';
     bubble.style.opacity = '0';
 
     flash.classList.add('on');
@@ -906,11 +1008,10 @@ padding: 0;
     instructions.textContent = "Gone.";
     releasedLabel.classList.add('show');
 
-    count += 1;
-    localStorage.setItem(STORAGE_KEY, String(count));
+    count = loadEntries().length;
     countNum.textContent = count;
 
-    setTimeout(resetApp, 1100);
+    setTimeout(resetApp, 650);
   }
 
   function throwAway(dx, dy) {
@@ -924,9 +1025,11 @@ padding: 0;
   }
 
   function doThrowVisual(dx, dy) {
-    // light single tap, distinct from the pop's stronger burst
+    // light single tap (works pre-iOS 26.5) + audio/visual fallback
     vibrate(25);
     vibrateBurst(1, 0);
+    playThrowSound();
+    screenShake(3);
 
     // fling the bubble off in the direction it was dragged
     const angle = Math.atan2(dy, dx);
@@ -940,8 +1043,7 @@ padding: 0;
     instructions.textContent = "Thrown away.";
     releasedLabel.classList.add('show');
 
-    count += 1;
-    localStorage.setItem(STORAGE_KEY, String(count));
+    count = loadEntries().length;
     countNum.textContent = count;
 
     setTimeout(resetApp, 550);
@@ -984,7 +1086,7 @@ padding: 0;
     const dist = Math.hypot(dx, dy);
 
     if (!dragMode && dist > DRAG_THRESHOLD) {
-      // switch out of charge mode into drag-to-throw mode
+      // switch out of charge mode into free-drag mode
       dragMode = true;
       charging = false;
       cancelAnimationFrame(holdTimer);
@@ -992,29 +1094,28 @@ padding: 0;
       bubble.style.boxShadow = '';
       bubble.style.borderColor = '';
       resetRing();
-      instructions.textContent = "Keep dragging to throw it away...";
+      instructions.textContent = "Let go to release it.";
     }
 
     if (dragMode) {
-      const clamped = Math.min(dist, THROW_DISTANCE * 1.4);
-      const ratio = clamped / dist || 0;
+      // follow the finger freely, no clamping to a max distance
       bubble.style.transition = 'none';
-      bubble.style.transform = `translate(${dx * ratio}px, ${dy * ratio}px) scale(${1 - Math.min(dist / (THROW_DISTANCE * 4), 0.15)})`;
-
-      if (dist >= THROW_DISTANCE) {
-        throwAway(dx, dy);
-      }
+      bubble.style.transform = `translate(${dx}px, ${dy}px)`;
     }
   });
 
   bubble.addEventListener('pointerup', () => {
     if (dragMode && !popped) {
-      // released before reaching throw distance — snap back
+      // any release while dragging counts as a throw, regardless of distance
+      let dx = curX - startX;
+      let dy = curY - startY;
       dragging = false;
-      dragMode = false;
-      bubble.style.transition = 'transform 0.3s cubic-bezier(.3,.7,.4,1)';
-      bubble.style.transform = '';
-      instructions.textContent = "Type your thought.\nThen press and hold the bubble to let it go.";
+      // guard against a near-zero-distance drag so the throw direction isn't undefined
+      if (Math.hypot(dx, dy) < 2) {
+        dx = dx || 1;
+        dy = dy || 1;
+      }
+      throwAway(dx, dy);
       return;
     }
     dragging = false;
@@ -1039,7 +1140,12 @@ padding: 0;
   });
 
   // prevent iOS rubber-band scroll
-  document.body.addEventListener('touchmove', (e) => e.preventDefault(), { passive: false });
+  document.body.addEventListener('touchmove', (e) => {
+    // allow normal scrolling inside the patterns view; block rubber-band
+    // scroll everywhere else (the main bubble screen)
+    if (e.target.closest('#patternsScroll')) return;
+    e.preventDefault();
+  }, { passive: false });
 })();
 </script>
 
