@@ -553,6 +553,29 @@ padding: 0;
     localStorage.removeItem(STORAGE_KEY);
   })();
 
+  // one-time migration: rename old category labels on existing entries to
+  // match the current shorter category names, so old and new entries match up
+  (function migrateCategoryNames() {
+    const RENAME_MAP = {
+      'Harm OCD': 'Harm',
+      'Suicidal/self-harm intrusions': 'Suicidal/self-harm',
+      'Sexual intrusions': 'Sexual',
+      'POCD (pedophilia-themed)': 'Pedophilia',
+      'Intrusive memory loops': 'Memories',
+      'Contamination/Health': 'Health',
+      'Clinical/work': 'Work'
+    };
+    const entries = loadEntries();
+    let changed = false;
+    entries.forEach(e => {
+      if (RENAME_MAP[e.category]) {
+        e.category = RENAME_MAP[e.category];
+        changed = true;
+      }
+    });
+    if (changed) saveEntries(entries);
+  })();
+
   let pendingAction = null; // reserved for future release types; currently always 'pop'
   let selectedCategory = null;
 
